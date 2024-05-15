@@ -13,6 +13,8 @@ TRUSTYAI_API_GROUP = "trustyai.opendatahub.io"
 
 # TrustyAI
 TRUSTYAI_SERVICE = "trustyai-service"
+
+# TrustyAI Endpoints
 TRUSTYAI_SPD_ENDPOINT = "/metrics/group/fairness/spd/"
 TRUSTYAI_NAMES_ENDPOINT = "/info/names"
 TRUSTYAI_MODEL_METADATA_ENDPOINT = "/info"

@@ -134,7 +134,7 @@ def send_trustyai_service_request(client, namespace, endpoint, method, data=None
     trustyai_service_route = get_trustyai_service_route(client=client, namespace=namespace)
     token = get_ocp_token()
 
-    url = f"https://{trustyai_service_route.host}/{endpoint}"
+    url = f"https://{trustyai_service_route.host}{endpoint}"
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
@@ -142,9 +142,8 @@ def send_trustyai_service_request(client, namespace, endpoint, method, data=None
 
     response = None
     if method == http.HTTPMethod.GET:
-        response = requests.get(f"https://{trustyai_service_route.host}/info",
-                                headers=headers, verify=False)
+        response = requests.get(url=url, headers=headers, verify=False)
     elif method == http.HTTPMethod.POST:
-        response = requests.post(url, headers=headers, json=data, verify=False)
+        response = requests.post(url=url, headers=headers, json=data, verify=False)
 
     return response

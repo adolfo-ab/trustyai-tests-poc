@@ -15,7 +15,7 @@ def test_basic(client, model_namespace, trustyai_service, onnx_loan_model_alpha_
     responses, errors = send_data_to_inference_service(client=client,
                                                        inference_service=onnx_loan_model_alpha_inference_service,
                                                        namespace=model_namespace,
-                                                       data_path="../data/training")
+                                                       data_path="./data/training")
     logger.info(responses)
     logger.info(errors)
 
@@ -29,6 +29,7 @@ def test_basic(client, model_namespace, trustyai_service, onnx_loan_model_alpha_
         logger.info(f"Request failed with status code: {response.status_code}")
         logger.error(f"Response headers: {response.headers}")
 
+    logger.info("Applying name mappings...")
     response = apply_trustyai_name_mappings(client=client, namespace=model_namespace,
                                             inference_service=onnx_loan_model_alpha_inference_service)
     logger.info(response)
@@ -38,6 +39,7 @@ def test_basic(client, model_namespace, trustyai_service, onnx_loan_model_alpha_
         logger.info(f"Request failed with status code: {response.status_code}")
         logger.error(f"Response headers: {response.headers}")
 
+    logger.info("Getting fairness metrics...")
     response = get_fairness_metrics(client=client, namespace=model_namespace,
                                     inference_service=onnx_loan_model_alpha_inference_service)
     logger.info(response)
@@ -47,5 +49,5 @@ def test_basic(client, model_namespace, trustyai_service, onnx_loan_model_alpha_
         logger.info(f"Request failed with status code: {response.status_code}")
         logger.error(f"Response headers: {response.headers}")
 
-    time.sleep(60)
+    time.sleep(30)
     assert True
