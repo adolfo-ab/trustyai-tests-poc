@@ -1,22 +1,26 @@
 import http
-import json
 import os
 import subprocess
+from time import time, sleep
 
+import kubernetes
 import requests
 from ocp_resources.pod import Pod
 from ocp_resources.route import Route
 
 from utils.constants import TRUSTYAI_SERVICE, TRUSTYAI_SPD_ENDPOINT, TRUSTYAI_NAMES_ENDPOINT, INFERENCE_ENDPOINT, \
-    TRUSTYAI_MODEL_METADATA_ENDPOINT
+    TRUSTYAI_MODEL_METADATA_ENDPOINT, MM_PAYLOAD_PROCESSORS
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class TrustyAIPodNotFoundError(Exception):
     pass
 
 
-def send_data_to_inference_service(client, namespace, inference_service, data_path, ):
-    trustyai_service_pod = get_trustyai_pod(client=client, namespace=namespace)
+def send_data_to_inference_service(client, namespace, inference_service, data_path):
     inference_route = next(Route.get(client=client, namespace=namespace.name, name=inference_service.name))
     token = get_ocp_token()
 
@@ -26,7 +30,9 @@ def send_data_to_inference_service(client, namespace, inference_service, data_pa
     for file_name in os.listdir(data_path):
         file_path = os.path.join(data_path, file_name)
         if os.path.isfile(file_path):
-            start_obs = get_trustyai_service_datapoint_counter(trustyai_service_pod=trustyai_service_pod, file=file_path)
+            start_obs = get_trustyai_service_datapoint_counter(client=client,
+                                                               namespace=namespace,
+                                                               inference_service=inference_service)
 
             with open(file_path, "r") as file:
                 data = file.read()
@@ -36,7 +42,9 @@ def send_data_to_inference_service(client, namespace, inference_service, data_pa
             headers = {"Authorization": f"Bearer {token}"}
             response = requests.post(url=url, headers=headers, data=data, verify=False)
 
-            end_obs = get_trustyai_service_datapoint_counter(trustyai_service_pod=trustyai_service_pod, file=file_path)
+            end_obs = get_trustyai_service_datapoint_counter(client=client,
+                                                             namespace=namespace,
+                                                             inference_service=inference_service)
 
             if end_obs > start_obs:
                 responses.append(response)
@@ -65,24 +73,21 @@ def get_trustyai_service_route(client, namespace):
     return next(Route.get(client=client, namespace=namespace.name, name=TRUSTYAI_SERVICE))
 
 
-def get_trustyai_service_datapoint_counter(trustyai_service_pod, file):
-    command_output = trustyai_service_pod.execute(
-        command=["bash", "-c", f"ls /inputs/ | grep \"{file}\" || echo \"\""],
-        container=TRUSTYAI_SERVICE,
-    )
+def get_trustyai_service_datapoint_counter(client, namespace, inference_service):
+    model_metadata_response = get_trustyai_model_metadata(client=client, namespace=namespace)
 
-    if not command_output.strip():
-        return 0
+    if model_metadata_response:
+        model_metadata = model_metadata_response.json()
+
+        model_data = next((item for item in model_metadata if item.get("modelId") == inference_service.name), None)
+
+        if model_data:
+            observations = model_data.get("observations", 0)
+            return observations
+        else:
+            return 0
     else:
-        metadata_output = trustyai_service_pod.execute(
-            command=["bash", "-c", f"cat /inputs/{file}-metadata.json"],
-            container=TRUSTYAI_SERVICE,
-        )
-
-        metadata_json = json.loads(metadata_output)
-        observations = metadata_json.get("observations", 0)
-
-        return observations
+        raise Exception("Failed to retrieve model metadata")
 
 
 def get_trustyai_model_metadata(client, namespace):
@@ -90,40 +95,34 @@ def get_trustyai_model_metadata(client, namespace):
                                          method=http.HTTPMethod.GET)
 
 
-def apply_trustyai_name_mappings(client, namespace, inference_service):
+def apply_trustyai_name_mappings(client, namespace, inference_service, input_mappings, output_mappings):
     data = {
         "modelId": inference_service.name,
-        "inputMapping": {
-            "customer_data_input-0": "Number of Children",
-            "customer_data_input-1": "Total Income",
-            "customer_data_input-2": "Number of Total Family Members",
-            "customer_data_input-3": "Is Male-Identifying?",
-            "customer_data_input-4": "Owns Car?",
-            "customer_data_input-5": "Owns Realty?",
-            "customer_data_input-6": "Is Partnered?",
-            "customer_data_input-7": "Is Employed?",
-            "customer_data_input-8": "Live with Parents?",
-            "customer_data_input-9": "Age",
-            "customer_data_input-10": "Length of Employment?"
-        },
-        "outputMapping": {
-            "predict": "Will Default?"
-        }
+        "inputMapping": input_mappings,
+        "outputMapping": output_mappings
     }
 
     return send_trustyai_service_request(client=client, namespace=namespace, endpoint=TRUSTYAI_NAMES_ENDPOINT,
                                          method=http.HTTPMethod.POST, data=data)
 
 
-def get_fairness_metrics(client, namespace, inference_service):
+def get_fairness_metrics(client,
+                         namespace,
+                         inference_service,
+                         protected_attribute,
+                         privileged_attribute,
+                         unprivileged_attribute,
+                         outcome_name,
+                         favorable_outcome,
+                         batch_size):
     data = {
         "modelId": inference_service.name,
-        "protectedAttribute": "Is Male-Identifying?",
-        "privilegedAttribute": 1.0,
-        "unprivilegedAttribute": 0.0,
-        "outcomeName": "Will Default?",
-        "favorableOutcome": 0,
-        "batchSize": 5000
+        "protectedAttribute": protected_attribute,
+        "privilegedAttribute": privileged_attribute,
+        "unprivilegedAttribute": unprivileged_attribute,
+        "outcomeName": outcome_name,
+        "favorableOutcome": favorable_outcome,
+        "batchSize": batch_size
     }
 
     return send_trustyai_service_request(client=client, namespace=namespace, endpoint=TRUSTYAI_SPD_ENDPOINT,
@@ -147,3 +146,38 @@ def send_trustyai_service_request(client, namespace, endpoint, method, data=None
         response = requests.post(url=url, headers=headers, json=data, verify=False)
 
     return response
+
+
+def wait_for_model_pods(client, namespace):
+    pods_with_env_var = False
+    all_pods_running = False
+    timeout = 60 * 3
+    start_time = time()
+    while not pods_with_env_var or not all_pods_running:
+        if time() - start_time > timeout:
+            raise TimeoutError("Not all model pods are ready in time")
+
+        model_pods = [pod for pod in Pod.get(client=client, namespace=namespace.name)
+                      if "modelmesh-serving" in pod.name]
+
+        pods_with_env_var = False
+        all_pods_running = True
+        for pod in model_pods:
+            try:
+                has_env_var = False
+                for container in pod.instance.spec.containers:
+                    if container.env is not None and any(env.name == MM_PAYLOAD_PROCESSORS for env in container.env):
+                        has_env_var = True
+                        break
+
+                if has_env_var:
+                    pods_with_env_var = True
+                    if pod.status != Pod.Status.RUNNING:
+                        all_pods_running = False
+                        break
+            except kubernetes.dynamic.exceptions.NotFoundError:
+                # Ignore the error if the pod is not found (deleted during the process)
+                continue
+
+        if not pods_with_env_var or not all_pods_running:
+            sleep(5)

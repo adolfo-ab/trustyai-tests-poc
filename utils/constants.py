@@ -13,6 +13,7 @@ TRUSTYAI_API_GROUP = "trustyai.opendatahub.io"
 
 # TrustyAI
 TRUSTYAI_SERVICE = "trustyai-service"
+MM_PAYLOAD_PROCESSORS = "MM_PAYLOAD_PROCESSORS"
 
 # TrustyAI Endpoints
 TRUSTYAI_SPD_ENDPOINT = "/metrics/group/fairness/spd/"

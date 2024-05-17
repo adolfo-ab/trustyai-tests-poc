@@ -17,6 +17,7 @@ from resources.serving_runtime import ServingRuntime
 from resources.trustyai_service import TrustyAIService
 from utils.constants import TRUSTYAI_SERVICE, OVMS_RUNTIME, OVMS_QUAY_IMAGE, OVMS, OPENVINO_MODEL_FORMAT, ONNX, \
     MINIO_IMAGE
+from utils.utils import wait_for_model_pods
 
 
 @pytest.fixture(scope="session")
@@ -92,6 +93,7 @@ def minio_pod(client, model_namespace):
 def aws_minio_data_connection_secret(client, model_namespace):
     with MinioSecret(client=client, name="aws-connection-minio-data-connection",
                      namespace=model_namespace.name,
+                     # Dummy AWS values
                      aws_access_key_id="VEhFQUNDRVNTS0VZ",
                      aws_default_region="dXMtc291dGg=",
                      aws_s3_bucket="bW9kZWxtZXNoLWV4YW1wbGUtbW9kZWxz",
@@ -165,21 +167,6 @@ def onnx_loan_model_alpha_inference_service(client, model_namespace, ovms_runtim
                           storage_name="aws-connection-minio-data-connection",
                           model_format_name=ONNX,
                           runtime=OVMS_RUNTIME) as inference_service:
+        wait_for_model_pods(client=client, namespace=model_namespace)
         yield inference_service
 
-
-@pytest.fixture(scope="function")
-def onnx_loan_model_alpha_pod(client, model_namespace, onnx_loan_model_alpha_inference_service):
-    is_pod_running = False
-    pod = None
-    timeout = 60*3
-    start_time = time()
-    while not is_pod_running:
-        if time() - start_time > timeout:
-            raise TimeoutError("Model pop did not start in time")
-        pod = next((pod for pod in Pod.get(client=client, namespace=model_namespace.name)
-                    if "modelmesh-serving-ovms-1.x" in pod.name), None)
-        if pod is not None:
-            pod.wait_for_status(status=Pod.Status.RUNNING)
-            is_pod_running = True
-    return pod
