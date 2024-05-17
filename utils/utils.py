@@ -38,7 +38,6 @@ def send_data_to_inference_service(client, namespace, inference_service, data_pa
                 data = file.read()
 
             url = f"https://{inference_route.host}{inference_route.instance.spec.path}{INFERENCE_ENDPOINT}"
-
             headers = {"Authorization": f"Bearer {token}"}
             response = requests.post(url=url, headers=headers, data=data, verify=False)
 

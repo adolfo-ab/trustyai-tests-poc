@@ -6,7 +6,6 @@ import yaml
 from kubernetes.dynamic import DynamicClient
 from ocp_resources.configmap import ConfigMap
 from ocp_resources.namespace import Namespace
-from ocp_resources.pod import Pod
 from ocp_resources.service_account import ServiceAccount
 
 from resources.inference_service import InferenceService
@@ -169,4 +168,3 @@ def onnx_loan_model_alpha_inference_service(client, model_namespace, ovms_runtim
                           runtime=OVMS_RUNTIME) as inference_service:
         wait_for_model_pods(client=client, namespace=model_namespace)
         yield inference_service
-

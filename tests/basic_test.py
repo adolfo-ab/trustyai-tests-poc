@@ -1,7 +1,5 @@
 import http
-import json
 import logging
-import time
 
 from utils.utils import send_data_to_inference_service, get_trustyai_model_metadata, apply_trustyai_name_mappings, \
     get_fairness_metrics
@@ -22,18 +20,18 @@ def test_basic(client, model_namespace, trustyai_service, onnx_loan_model_alpha_
 
     logger.info("Applying name mappings...")
     input_mappings = {
-            "customer_data_input-0": "Number of Children",
-            "customer_data_input-1": "Total Income",
-            "customer_data_input-2": "Number of Total Family Members",
-            "customer_data_input-3": "Is Male-Identifying?",
-            "customer_data_input-4": "Owns Car?",
-            "customer_data_input-5": "Owns Realty?",
-            "customer_data_input-6": "Is Partnered?",
-            "customer_data_input-7": "Is Employed?",
-            "customer_data_input-8": "Live with Parents?",
-            "customer_data_input-9": "Age",
-            "customer_data_input-10": "Length of Employment?"
-        }
+        "customer_data_input-0": "Number of Children",
+        "customer_data_input-1": "Total Income",
+        "customer_data_input-2": "Number of Total Family Members",
+        "customer_data_input-3": "Is Male-Identifying?",
+        "customer_data_input-4": "Owns Car?",
+        "customer_data_input-5": "Owns Realty?",
+        "customer_data_input-6": "Is Partnered?",
+        "customer_data_input-7": "Is Employed?",
+        "customer_data_input-8": "Live with Parents?",
+        "customer_data_input-9": "Age",
+        "customer_data_input-10": "Length of Employment?"
+    }
     output_mappings = {"predict": "Will Default?"}
     response = apply_trustyai_name_mappings(client=client,
                                             namespace=model_namespace,
